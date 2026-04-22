@@ -73,24 +73,41 @@ export async function roastPortfolio(url) {
   if (!apiKey) throw new Error('API key not configured. Add VITE_GEMINI_API_KEY to .env');
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-  const result = await model.generateContent(PROMPT_TEMPLATE(url));
-  const text = result.response.text();
+  let attempts = 0;
+  const maxAttempts = 3;
+  
+  while (attempts < maxAttempts) {
+    try {
+      const result = await model.generateContent(PROMPT_TEMPLATE(url));
+      const text = result.response.text();
 
-  // Strip markdown code fences if present
-  const cleaned = text
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/```\s*$/i, '')
-    .trim();
+      // Strip markdown code fences if present
+      const cleaned = text
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/```\s*$/i, '')
+        .trim();
 
-  try {
-    return JSON.parse(cleaned);
-  } catch (e) {
-    // Try to extract JSON object from the text
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (match) return JSON.parse(match[0]);
-    throw new Error('Failed to parse AI response as JSON. Raw: ' + cleaned.slice(0, 200));
+      try {
+        return JSON.parse(cleaned);
+      } catch (e) {
+        // Try to extract JSON object from the text
+        const match = cleaned.match(/\{[\s\S]*\}/);
+        if (match) return JSON.parse(match[0]);
+        throw new Error('Failed to parse AI response as JSON. Raw: ' + cleaned.slice(0, 200));
+      }
+    } catch (err) {
+      attempts++;
+      const isHighDemand = err.message?.includes('503') || err.message?.includes('high demand');
+      
+      if (isHighDemand && attempts < maxAttempts) {
+        console.log(`Gemini is busy, retrying... (Attempt ${attempts}/${maxAttempts})`);
+        await new Promise(resolve => setTimeout(resolve, 2000 * attempts)); // Exponential backoff
+        continue;
+      }
+      throw err;
+    }
   }
 }
