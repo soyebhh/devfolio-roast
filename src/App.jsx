@@ -26,7 +26,7 @@ export default function App() {
       }, 100);
     } catch (err) {
       console.error(err);
-      setError(err.message?.includes('API key') ? err.message : 'AI took a break, try again 😅');
+      setError(err.message || 'AI took a break, try again 😅');
     } finally {
       setLoading(false);
     }
